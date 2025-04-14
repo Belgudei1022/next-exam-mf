@@ -3,7 +3,7 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaClient } from "@/app/generated/prisma";
 import { JWT } from "next-auth/jwt";
-import bcrypt from "bcryptjs"; // Install bcryptjs
+import bcrypt from "bcryptjs"; 
 
 const prisma = new PrismaClient();
 
