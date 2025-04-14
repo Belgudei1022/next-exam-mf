@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Nav from "@/ui/compnents/nav";
@@ -17,32 +17,39 @@ export default function CreatePostPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
 
+  // Redirect unauthenticated users
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/login");
     }
   }, [status, router]);
 
+  // Fetch categories
   useEffect(() => {
     const fetchCategories = async () => {
       try {
         const res = await fetch("/api/categories");
-        if (!res.ok) throw new Error("Failed to fetch categories");
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(
+            `Failed to fetch categories: ${res.status} ${errorText}`
+          );
+        }
         const data = await res.json();
+        if (!Array.isArray(data)) {
+          throw new Error("Invalid categories data format");
+        }
         setCategories(data);
       } catch (err) {
-        setError("Failed to load categories");
+        setError(
+          err instanceof Error ? err.message : "Failed to load categories"
+        );
       }
     };
     fetchCategories();
   }, []);
 
-  if (status === "loading") {
-    return (
-      <div className="min-h-screen bg-[#101010] text-white">Loading...</div>
-    );
-  }
-
+  // Handle form submission
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -58,7 +65,6 @@ export default function CreatePostPage() {
       categoryId: formData.get("categoryId") as string,
       userId: session?.user?.id as string,
     };
-    // console.log(formData.get("categoryId") as string);
 
     try {
       const response = await fetch("/api/posts", {
@@ -72,13 +78,20 @@ export default function CreatePostPage() {
         throw new Error(errorData.error || "Failed to create post");
       }
 
-      router.push("/posts");
+      router.push("/"); // Changed to "/" since "/posts" may not exist
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-[#101010] text-white">Loading...</div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#101010] to-[#1a1a1a] text-white">
       <Nav />
@@ -176,7 +189,7 @@ export default function CreatePostPage() {
                 name="categoryId"
                 required
                 className="w-full p-3 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={isSubmitting}
+                disabled={isSubmitting || categories.length === 0}
               >
                 <option value="">Select a category</option>
                 {categories.map((category) => (
@@ -190,7 +203,7 @@ export default function CreatePostPage() {
             <div className="flex justify-end gap-4">
               <button
                 type="button"
-                onClick={() => router.push("/")}
+                onClick={() => router.push("/posts")}
                 className="px-6 py-2 bg-gray-600 rounded-lg text-white hover:bg-gray-500 transition-colors disabled:opacity-50"
                 disabled={isSubmitting}
               >

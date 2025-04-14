@@ -28,6 +28,7 @@ export interface Post {
   createdAt: string;
   userId: string;
   categoryId: string;
+  likes: string[];
   comments: Comment[];
   user?: {
     id: string;

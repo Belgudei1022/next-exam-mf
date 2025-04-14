@@ -1,5 +1,5 @@
-
-import prisma from "@/types/prisma";
+import prisma from "@/types/prisma"; 
+import { NextResponse } from "next/server";
 import { Post } from "@/types/Type";
 
 export async function GET(
@@ -20,6 +20,9 @@ export async function GET(
               },
             },
           },
+          orderBy: {
+            createdAt: "desc", // Add sorting for comments
+          },
         },
         user: {
           select: {
@@ -28,10 +31,18 @@ export async function GET(
             image: true,
           },
         },
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
-    if (!post) return new Response("Post not found", { status: 404 });
+    if (!post) {
+      return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    }
 
     const result: Post = {
       id: post.id,
@@ -42,7 +53,11 @@ export async function GET(
       createdAt: post.createdAt.toISOString(),
       userId: post.userId,
       categoryId: post.categoryId,
-      comments: post.comments.map((comment) => ({
+      category: {
+        id: post.category.id,
+        name: post.category.name,
+      },
+      comments: post.comments.map((comment:any) => ({
         id: comment.id,
         content: comment.content,
         createdAt: comment.createdAt.toISOString(),
@@ -61,9 +76,12 @@ export async function GET(
       },
     };
 
-    return Response.json(result);
+    return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching post:", error);
-    return new Response("Internal Server Error", { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }

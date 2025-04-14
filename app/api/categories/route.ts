@@ -12,12 +12,11 @@ export async function GET() {
         name: "asc",
       },
     });
-
-    return NextResponse.json(categories);
+    return NextResponse.json(categories, { status: 200 });
   } catch (error) {
     console.error("Error fetching categories:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { error: "Failed to fetch categories" },
       { status: 500 }
     );
   }

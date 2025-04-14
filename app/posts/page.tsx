@@ -1,214 +1,203 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { PrismaClient } from "@/app/generated/prisma";
+"use client";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
-import Image from "next/image";
-import { redirect } from "next/navigation";
 import Nav from "@/ui/compnents/nav";
+import { Post } from "@/types/Type";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 
-const prisma = new PrismaClient();
+export default function HomePage() {
+  const { data: session } = useSession();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [likeLoading, setLikeLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const searchQuery = searchParams.get("search") || "";
 
-interface Post {
-  id: string;
-  title: string;
-  content: string;
-  imageUrl: string | null;
-  createdAt: Date;
-  user: { name: string };
-  category: { name: string };
-  likes: { userId: string }[];
-}
-
-async function likePost(postId: string, userId: string) {
-  "use server";
-  try {
-    const existingLike = await prisma.like.findUnique({
-      where: {
-        userId_postId: { userId, postId },
-      },
-    });
-
-    if (existingLike) {
-      await prisma.like.delete({
-        where: {
-          userId_postId: { userId, postId },
-        },
-      });
-    } else {
-      await prisma.like.create({
-        data: {
-          userId,
-          postId,
-        },
-      });
+  // Fetch posts on mount and when search query changes
+  useEffect(() => {
+    async function fetchPosts() {
+      setIsLoading(true);
+      try {
+        const url = searchQuery
+          ? `/api/posts?search=${encodeURIComponent(searchQuery)}`
+          : "/api/posts";
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Failed to fetch posts");
+        const data = await response.json();
+        // Normalize likes to string[]
+        const normalizedPosts = data.map((post: any) => ({
+          ...post,
+          likes: Array.isArray(post.likes)
+            ? post.likes.map((like: any) =>
+                typeof like === "string" ? like : like.userId
+              )
+            : [],
+        }));
+        setPosts(normalizedPosts);
+      } catch (error) {
+        console.error("Error fetching posts:", error);
+        setError("Failed to load posts.");
+      } finally {
+        setIsLoading(false);
+      }
     }
-  } catch (error) {
-    console.error("Error liking post:", error);
+    fetchPosts();
+  }, [searchQuery]);
+
+  // Handle like/unlike with optimistic update
+  async function handleLike(postId: string, userId: string | undefined) {
+    if (!userId) {
+      setError("You must be logged in to like a post.");
+      return;
+    }
+
+    console.log("Liking post:", { postId, userId }); // Debug
+
+    // Optimistic update
+    setLikeLoading(postId);
+    const prevPosts = [...posts];
+    setPosts((prevPosts) =>
+      prevPosts.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              likes: post.likes.includes(userId)
+                ? post.likes.filter((like) => like !== userId)
+                : [...post.likes, userId],
+            }
+          : post
+      )
+    );
+
+    try {
+      const response = await fetch("/api/like", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, userId }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to like post");
+      }
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error("Like action failed");
+      }
+    } catch (error) {
+      console.error("Error liking post:", error);
+      setPosts(prevPosts); // Revert on failure
+      setError("Failed to like post. Please try again.");
+    } finally {
+      setLikeLoading(null);
+    }
   }
-}
-
-async function savePost(postId: string, userId: string) {
-  "use server";
-}
-
-const mockPosts: Post[] = [
-  {
-    id: "1",
-    title: "Exploring the Cosmos: A Journey Beyond",
-    content:
-      "The universe is a vast and mysterious place, filled with wonders that challenge our understanding. From distant galaxies to enigmatic black holes, this post dives into the latest discoveries in astrophysics and what they mean for humanity's future.",
-    imageUrl:
-      "https://www.pexels.com/photo/basketball-in-a-basketball-hoop-14975902/",
-    createdAt: new Date("2025-04-10"),
-    user: { name: "Alex Starlight" },
-    category: { name: "Science" },
-    likes: [{ userId: "user1" }, { userId: "user2" }],
-  },
-  {
-    id: "2",
-    title: "The Art of Minimalism in Digital Design",
-    content:
-      "Minimalism isn't just about less—it's about intention. This article explores how clean lines, bold typography, and strategic negative space can create impactful user experiences in modern web design.",
-    imageUrl:
-      "https://www.pexels.com/photo/majestic-view-of-the-taj-mahal-in-agra-31271797/",
-    createdAt: new Date("2025-04-09"),
-    user: { name: "Emma Pixel" },
-    category: { name: "Design" },
-    likes: [{ userId: "user3" }],
-  },
-  {
-    id: "3",
-    title: "Sustainable Living: Small Steps, Big Impact",
-    content:
-      "From reducing waste to embracing renewable energy, sustainable living is more accessible than you think. Learn practical tips to make eco-friendly choices that benefit both you and the planet.",
-    imageUrl:
-      "https://www.pexels.com/photo/majestic-view-of-the-taj-mahal-in-agra-31271797/",
-    createdAt: new Date("2025-04-08"),
-    user: { name: "Liam Green" },
-    category: { name: "Lifestyle" },
-    likes: [],
-  },
-];
-
-export default async function HomePage() {
-  const session = await getServerSession(authOptions);
-
-  const posts = await prisma.post.findMany({
-    include: {
-      user: { select: { name: true } },
-      category: { select: { name: true } },
-      likes: { select: { userId: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const allPosts = posts.length > 0 ? posts : mockPosts;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#101010] to-[#1a1a1a] text-white">
+    <div className="min-h-screen bg-gray-900 text-white font-sans">
       <Nav />
-      <div className="max-w-7xl mx-auto px-4 py-12">
-        <h1 className="text-5xl font-extrabold mb-12 text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 animate-pulse">
-          Welcome to Jack&Bek Blog site!
+      <main className="max-w-6xl mx-auto px-4 py-16">
+        <h1 className="text-4xl font-bold text-center mb-10 text-cyan-400">
+          {searchQuery
+            ? `Search Results for "${searchQuery}"`
+            : "Explore Posts"}
         </h1>
-    
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {allPosts.map((post: Post) => (
-            <Link href={`/posts/${post.id}`}>
+
+        {error && <div className="text-center text-red-400 mb-4">{error}</div>}
+
+        {isLoading ? (
+          <div className="text-center text-gray-400">Loading...</div>
+        ) : posts.length === 0 ? (
+          <div className="text-center text-gray-400">No posts found.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {posts.map((post) => (
               <div
                 key={post.id}
-                className="relative bg-[#1a1a1a]/80 backdrop-blur-lg rounded-2xl overflow-hidden shadow-2xl hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all duration-300 transform hover:-translate-y-2"
+                className="bg-gray-800 rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-300"
               >
-                {post.imageUrl && (
-                  <div className="relative h-64 group">
-                    <img
-                      src={post.imageUrl}
-                      alt={post.title}
-                      className="object-cover transition-transform duration-500 group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                {post.imageUrl ? (
+                  <Link href={`/posts/${post.id}`}>
+                    <div className="relative h-48">
+                      <img
+                        src={post.imageUrl}
+                        alt={post.title}
+                        className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-gray-900/50 to-transparent" />
+                    </div>
+                  </Link>
+                ) : (
+                  <div className="h-48 bg-gray-700 flex items-center justify-center">
+                    <span className="text-gray-400">No Image</span>
                   </div>
                 )}
 
-                <div className="p-6 relative">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-sm font-medium px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full">
-                      {post.category.name}
+                <div className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-medium px-2 py-1 bg-cyan-500/20 text-cyan-300 rounded-full">
+                      {post.category?.name || "Uncategorized"}
                     </span>
-                    <span className="text-sm text-gray-400">
+                    <span className="text-xs text-gray-400">
                       {new Date(post.createdAt).toLocaleDateString()}
                     </span>
                   </div>
 
-                  <h2 className="text-2xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-purple-400 hover:from-blue-400 hover:to-purple-500 transition-colors">
-                    {post.title}
-                  </h2>
+                  <Link href={`/posts/${post.id}`}>
+                    <h2 className="text-xl font-semibold text-white hover:text-cyan-400 transition-colors mb-2">
+                      {post.title}
+                    </h2>
+                  </Link>
 
-                  <p className="text-gray-300 line-clamp-3 mb-5 leading-relaxed">
+                  <p className="text-gray-300 text-sm line-clamp-2 mb-4">
                     {post.content}
                   </p>
 
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-400 font-medium">
-                      By {post.user.name}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">
+                      By {post.user?.name || "Unknown"}
                     </span>
 
                     {session?.user ? (
-                      <div className="flex gap-4">
-                        <form
-                          action={async () => {
-                            "use server";
-                            await likePost(post.id, session.user.id);
-                            redirect("/");
-                          }}
+                      <button
+                        onClick={() => handleLike(post.id, session.user.id)}
+                        className={`flex items-center gap-1 text-sm transition-colors ${
+                          post.likes.includes(session.user.id)
+                            ? "text-red-400"
+                            : "text-gray-400 hover:text-red-400"
+                        } ${likeLoading === post.id ? "opacity-50" : ""}`}
+                        aria-label={`${
+                          post.likes.includes(session.user.id)
+                            ? "Unlike"
+                            : "Like"
+                        } post titled ${post.title}`}
+                        disabled={likeLoading === post.id}
+                      >
+                        <svg
+                          className="w-5 h-5"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
                         >
-                          <button
-                            type="submit"
-                            className={`text-sm font-medium flex items-center gap-1 transition-colors ${
-                              post.likes.some(
-                                (like) => like.userId === session.user.id
-                              )
-                                ? "text-red-500"
-                                : "text-gray-400 hover:text-red-400"
-                            }`}
-                          >
-                            <span className="text-lg">♥</span>{" "}
-                            {post.likes.length}
-                          </button>
-                        </form>
-
-                        <form
-                          action={async () => {
-                            "use server";
-                            await savePost(post.id, session.user.id);
-                            redirect("/");
-                          }}
-                        >
-                          <button
-                            type="submit"
-                            className="text-sm font-medium text-gray-400 hover:text-blue-400 transition-colors"
-                          >
-                            <span className="text-lg">★</span> Save
-                          </button>
-                        </form>
-                      </div>
+                          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                        </svg>
+                        {post.likes.length}
+                      </button>
                     ) : (
                       <Link
-                        href="/login"
-                        className="text-sm font-medium text-gray-400 hover:text-blue-400 transition-colors"
+                        href="/auth/login"
+                        className="text-sm text-gray-400 hover:text-cyan-400 transition-colors"
                       >
-                        Login to interact
+                        Login to like
                       </Link>
                     )}
                   </div>
                 </div>
-
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500" />
               </div>
-            </Link>
-          ))}
-        </div>
-      </div>
+            ))}
+          </div>
+        )}
+      </main>
     </div>
   );
 }
