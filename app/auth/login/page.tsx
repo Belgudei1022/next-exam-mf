@@ -28,8 +28,7 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = async () => {
-    await signIn("google", { redirect: false });
-    router.push("/");
+    await signIn("google", { callbackUrl: "/" });
   };
 
   return (
@@ -41,6 +40,7 @@ export default function LoginPage() {
 
         <form className="space-y-6" onSubmit={handleLogin}>
           {error && <p className="text-red-500 text-center">{error}</p>}
+
           <div>
             <label
               htmlFor="email"

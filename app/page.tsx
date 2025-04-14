@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { signOut } from "next-auth/react";
 
 interface Blog {
   id: string;
@@ -49,12 +50,16 @@ export default function HomePage() {
     <main className="min-h-screen bg-[#101010] text-white p-6">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Блог</h1>
+        <button
+          onClick={() => signOut({ callbackUrl: "/auth/login" })}
+          className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-500">
+          Sign Out
+        </button>
         {session && (
           <div className="mb-4">
             <Link
               href="/create"
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
-            >
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
               Шинэ пост бичих
             </Link>
           </div>
@@ -63,8 +68,7 @@ export default function HomePage() {
           {blogs.map((blog) => (
             <div
               key={blog.id}
-              className="bg-[#181818] p-4 rounded-lg shadow-md"
-            >
+              className="bg-[#181818] p-4 rounded-lg shadow-md">
               <h2 className="text-xl font-semibold">{blog.title}</h2>
               <p className="mt-2 text-sm text-gray-300">{blog.content}</p>
               <div className="mt-4 flex justify-between items-center text-sm">
@@ -74,8 +78,7 @@ export default function HomePage() {
                     <>
                       <Link
                         href={`/edit/${blog.id}`}
-                        className="hover:underline text-blue-400"
-                      >
+                        className="hover:underline text-blue-400">
                         Засах
                       </Link>
                       <button
@@ -88,8 +91,7 @@ export default function HomePage() {
                             )
                           );
                         }}
-                        className="hover:underline text-red-400"
-                      >
+                        className="hover:underline text-red-400">
                         Устгах
                       </button>
                     </>
@@ -98,16 +100,14 @@ export default function HomePage() {
                     onClick={() => toggleLike(blog.id)}
                     className={`hover:text-pink-500 ${
                       blog.likedByUser ? "text-pink-400" : ""
-                    }`}
-                  >
+                    }`}>
                     ❤️
                   </button>
                   <button
                     onClick={() => toggleSave(blog.id)}
                     className={`hover:text-green-400 ${
                       blog.savedByUser ? "text-green-300" : ""
-                    }`}
-                  >
+                    }`}>
                     💾
                   </button>
                 </div>
